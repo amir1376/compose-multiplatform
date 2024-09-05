@@ -1,16 +1,17 @@
 package org.jetbrains.compose.resources
 
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.jetbrains.compose.resources.vector.toImageVector
 import org.jetbrains.compose.resources.vector.xmldom.Element
 
@@ -21,18 +22,8 @@ import org.jetbrains.compose.resources.vector.xmldom.Element
  * @param items The set of resource items associated with the image resource.
  */
 @Immutable
-class DrawableResource(id: String, items: Set<ResourceItem>) : Resource(id, items)
-
-/**
- * Creates an [DrawableResource] object with the specified path.
- *
- * @param path The path of the drawable resource.
- * @return An [DrawableResource] object.
- */
-fun DrawableResource(path: String): DrawableResource = DrawableResource(
-    id = "DrawableResource:$path",
-    items = setOf(ResourceItem(emptySet(), path))
-)
+class DrawableResource
+@InternalResourceApi constructor(id: String, items: Set<ResourceItem>) : Resource(id, items)
 
 /**
  * Retrieves a [Painter] using the specified drawable resource.
@@ -41,14 +32,14 @@ fun DrawableResource(path: String): DrawableResource = DrawableResource(
  * @param resource The drawable resource to be used.
  * @return The [Painter] loaded from the resource.
  */
-@ExperimentalResourceApi
 @Composable
 fun painterResource(resource: DrawableResource): Painter {
     val environment = LocalComposeEnvironment.current.rememberEnvironment()
-    val filePath = remember(resource, environment) { resource.getPathByEnvironment(environment) }
-    val isXml = filePath.endsWith(".xml", true)
-    if (isXml) {
+    val filePath = remember(resource, environment) { resource.getResourceItemByEnvironment(environment).path }
+    if (filePath.endsWith(".xml", true)) {
         return rememberVectorPainter(vectorResource(resource))
+    } else if (filePath.endsWith(".svg", true)) {
+        return svgPainter(resource)
     } else {
         return BitmapPainter(imageResource(resource))
     }
@@ -62,14 +53,20 @@ private val emptyImageBitmap: ImageBitmap by lazy { ImageBitmap(1, 1) }
  * @param resource The drawable resource to be used.
  * @return The ImageBitmap loaded from the resource.
  */
-@ExperimentalResourceApi
 @Composable
 fun imageResource(resource: DrawableResource): ImageBitmap {
-    val resourceReader = LocalResourceReader.current
-    val imageBitmap by rememberResourceState(resource, { emptyImageBitmap }) { env ->
-        val path = resource.getPathByEnvironment(env)
-        val cached = loadImage(path, resourceReader) {
-            ImageCache.Bitmap(it.toImageBitmap())
+    val resourceReader = LocalResourceReader.currentOrPreview
+    val resourceEnvironment = rememberResourceEnvironment()
+    val imageBitmap by rememberResourceState(
+        resource, resourceReader, resourceEnvironment, { emptyImageBitmap }
+    ) { env ->
+        val item = resource.getResourceItemByEnvironment(env)
+        val resourceDensityQualifier = item.qualifiers.firstOrNull { it is DensityQualifier } as? DensityQualifier
+        val resourceDensity = resourceDensityQualifier?.dpi ?: DensityQualifier.MDPI.dpi
+        val screenDensity = resourceEnvironment.density.dpi
+        val path = item.path
+        val cached = loadImage(path, "$path-${screenDensity}dpi", resourceReader) {
+            ImageCache.Bitmap(it.toImageBitmap(resourceDensity, screenDensity))
         } as ImageCache.Bitmap
         cached.bitmap
     }
@@ -86,14 +83,13 @@ private val emptyImageVector: ImageVector by lazy {
  * @param resource The drawable resource to be used.
  * @return The ImageVector loaded from the resource.
  */
-@ExperimentalResourceApi
 @Composable
 fun vectorResource(resource: DrawableResource): ImageVector {
-    val resourceReader = LocalResourceReader.current
+    val resourceReader = LocalResourceReader.currentOrPreview
     val density = LocalDensity.current
-    val imageVector by rememberResourceState(resource, { emptyImageVector }) { env ->
-        val path = resource.getPathByEnvironment(env)
-        val cached = loadImage(path, resourceReader) {
+    val imageVector by rememberResourceState(resource, resourceReader, density, { emptyImageVector }) { env ->
+        val path = resource.getResourceItemByEnvironment(env).path
+        val cached = loadImage(path, path, resourceReader) {
             ImageCache.Vector(it.toXmlElement().toImageVector(density))
         } as ImageCache.Vector
         cached.vector
@@ -101,16 +97,53 @@ fun vectorResource(resource: DrawableResource): ImageVector {
     return imageVector
 }
 
-internal expect fun ByteArray.toImageBitmap(): ImageBitmap
+internal expect class SvgElement
+
+internal expect fun SvgElement.toSvgPainter(density: Density): Painter
+
+private val emptySvgPainter: Painter by lazy { BitmapPainter(emptyImageBitmap) }
+
+@Composable
+private fun svgPainter(resource: DrawableResource): Painter {
+    val resourceReader = LocalResourceReader.currentOrPreview
+    val density = LocalDensity.current
+    val svgPainter by rememberResourceState(resource, resourceReader, density, { emptySvgPainter }) { env ->
+        val path = resource.getResourceItemByEnvironment(env).path
+        val cached = loadImage(path, path, resourceReader) {
+            ImageCache.Svg(it.toSvgElement().toSvgPainter(density))
+        } as ImageCache.Svg
+        cached.painter
+    }
+    return svgPainter
+}
+
+/**
+ * Retrieves the byte array of the drawable resource.
+ *
+ * @param environment The resource environment, which can be obtained from [rememberResourceEnvironment] or [getSystemResourceEnvironment].
+ * @param resource The drawable resource.
+ * @return The byte array representing the drawable resource.
+ */
+@ExperimentalResourceApi
+suspend fun getDrawableResourceBytes(
+    environment: ResourceEnvironment,
+    resource: DrawableResource
+): ByteArray {
+    val resourceItem = resource.getResourceItemByEnvironment(environment)
+    return DefaultResourceReader.read(resourceItem.path)
+}
+
+internal expect fun ByteArray.toImageBitmap(resourceDensity: Int, targetDensity: Int): ImageBitmap
 internal expect fun ByteArray.toXmlElement(): Element
+internal expect fun ByteArray.toSvgElement(): SvgElement
 
 private sealed interface ImageCache {
     class Bitmap(val bitmap: ImageBitmap) : ImageCache
     class Vector(val vector: ImageVector) : ImageCache
+    class Svg(val painter: Painter) : ImageCache
 }
 
-private val imageCacheMutex = Mutex()
-private val imageCache = mutableMapOf<String, Deferred<ImageCache>>()
+private val imageCache = AsyncCache<String, ImageCache>()
 
 //@TestOnly
 internal fun dropImageCache() {
@@ -119,16 +152,7 @@ internal fun dropImageCache() {
 
 private suspend fun loadImage(
     path: String,
+    cacheKey: String,
     resourceReader: ResourceReader,
     decode: (ByteArray) -> ImageCache
-): ImageCache = coroutineScope {
-    val deferred = imageCacheMutex.withLock {
-        imageCache.getOrPut(path) {
-            //LAZY - to free the mutex lock as fast as possible
-            async(start = CoroutineStart.LAZY) {
-                decode(resourceReader.read(path))
-            }
-        }
-    }
-    deferred.await()
-}
+): ImageCache = imageCache.getOrLoad(cacheKey) { decode(resourceReader.read(path)) }

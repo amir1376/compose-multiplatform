@@ -14,10 +14,10 @@
 * [Keyboard support](Keyboard)
 * [Tab focus navigation](Tab_Navigation)
 * [Swing interoperability](Swing_Integration)
-* [Navigation](Navigation)
+* [Navigation](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-navigation-routing.html)
 * [Accessibility](Accessibility)
 * [Building a native distribution](Native_distributions_and_local_execution)
-* [UI testing](UI_Testing)
+* [UI testing](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-test.html)
 
 ## Web (based on Wasm)
 * [Getting started](https://kotl.in/wasm-compose-example)

@@ -2,6 +2,7 @@ package org.jetbrains.compose.resources
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.text.font.*
 
 /**
@@ -13,18 +14,8 @@ import androidx.compose.ui.text.font.*
  * @see Resource
  */
 @Immutable
-class FontResource(id: String, items: Set<ResourceItem>): Resource(id, items)
-
-/**
- * Creates an [FontResource] object with the specified path.
- *
- * @param path The path to the font resource file.
- * @return A new [FontResource] object.
- */
-fun FontResource(path: String): FontResource = FontResource(
-    id = "FontResource:$path",
-    items = setOf(ResourceItem(emptySet(), path))
-)
+class FontResource
+@InternalResourceApi constructor(id: String, items: Set<ResourceItem>): Resource(id, items)
 
 /**
  * Creates a font using the specified font resource, weight, and style.
@@ -37,10 +28,25 @@ fun FontResource(path: String): FontResource = FontResource(
  *
  * @throws NotFoundException if the specified resource ID is not found.
  */
-@ExperimentalResourceApi
 @Composable
 expect fun Font(
     resource: FontResource,
     weight: FontWeight = FontWeight.Normal,
     style: FontStyle = FontStyle.Normal
 ): Font
+
+/**
+ * Retrieves the byte array of the font resource.
+ *
+ * @param environment The resource environment, which can be obtained from [rememberResourceEnvironment] or [getSystemResourceEnvironment].
+ * @param resource The font resource.
+ * @return The byte array representing the font resource.
+ */
+@ExperimentalResourceApi
+suspend fun getFontResourceBytes(
+    environment: ResourceEnvironment,
+    resource: FontResource
+): ByteArray {
+    val resourceItem = resource.getResourceItemByEnvironment(environment)
+    return DefaultResourceReader.read(resourceItem.path)
+}

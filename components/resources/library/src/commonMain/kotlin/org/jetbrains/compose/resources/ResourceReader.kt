@@ -1,8 +1,9 @@
 package org.jetbrains.compose.resources
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
 
-@ExperimentalResourceApi
 class MissingResourceException(path: String) : Exception("Missing resource with path: $path")
 
 /**
@@ -11,17 +12,31 @@ class MissingResourceException(path: String) : Exception("Missing resource with 
  * @param path The path of the file to read in the resource's directory.
  * @return The content of the file as a byte array.
  */
-@ExperimentalResourceApi
-expect suspend fun readResourceBytes(path: String): ByteArray
+@InternalResourceApi
+suspend fun readResourceBytes(path: String): ByteArray = DefaultResourceReader.read(path)
+
+/**
+ * Provides the platform dependent URI for a given resource path.
+ *
+ * @param path The path to the file in the resource's directory.
+ * @return The URI string of the specified resource.
+ */
+@InternalResourceApi
+fun getResourceUri(path: String): String = DefaultResourceReader.getUri(path)
 
 internal interface ResourceReader {
     suspend fun read(path: String): ByteArray
+    suspend fun readPart(path: String, offset: Long, size: Long): ByteArray
+    fun getUri(path: String): String
 }
 
-internal val DefaultResourceReader: ResourceReader = object : ResourceReader {
-    @OptIn(ExperimentalResourceApi::class)
-    override suspend fun read(path: String): ByteArray = readResourceBytes(path)
-}
+internal expect fun getPlatformResourceReader(): ResourceReader
+
+internal val DefaultResourceReader = getPlatformResourceReader()
 
 //ResourceReader provider will be overridden for tests
 internal val LocalResourceReader = staticCompositionLocalOf { DefaultResourceReader }
+
+//For an android preview we need to initialize the resource reader with the local context
+internal expect val ProvidableCompositionLocal<ResourceReader>.currentOrPreview: ResourceReader
+    @Composable get

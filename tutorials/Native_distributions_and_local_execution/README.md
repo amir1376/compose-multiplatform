@@ -62,7 +62,7 @@ The plugin creates the following tasks:
 Note, that there is no cross-compilation support available at the moment,
 so the formats can only be built using the specific OS (e.g. to build `.dmg` you have to use macOS).
 Tasks that are not compatible with the current OS are skipped by default.
-* `packageDistributionForCurrentOS` is a [lifecycle](https://docs.gradle.org/current/userguide/more_about_tasks.html#sec:lifecycle_tasks) task,
+* `packageDistributionForCurrentOS` is a [lifecycle](https://docs.gradle.org/current/userguide/more_about_tasks.html#sec:task_categories) task,
 aggregating all package tasks for an application.
 * `packageUberJarForCurrentOS` is used to create a single jar file, containing all dependencies for current OS. 
 The task is available starting from the M2 release.
@@ -442,6 +442,8 @@ The following platform-specific options are available
     * `packageName` — a name of the application;
     * `dockName` — a name of the application displayed in the menu bar, the "About <App>" menu item, in the dock, etc. 
       Equals to `packageName` by default.
+    * `minimumSystemVersion` — a minimum macOS version required to run the application.
+      See [LSMinimumSystemVersion](https://developer.apple.com/documentation/bundleresources/information_property_list/lsminimumsystemversion) for details;
     * `signing`, `notarization`, `provisioningProfile`, and `runtimeProvisioningProfile` — see
       [the corresponding tutorial](/tutorials/Signing_and_notarization_on_macOS/README.md) 
       for details;
@@ -594,15 +596,16 @@ that is developed by [Guardsquare](https://www.guardsquare.com/).
 
 The Gradle plugin provides a *release* task for each corresponding *default* packaging task:
 
-Default task (w/o ProGuard)| Release task (w. ProGuard)       |Description
----------------------------|----------------------------------|-----------
-`createDistributable`      | `createReleaseDistributable`     |Creates an application image with bundled JDK & resources
-`runDistributable`         | `runReleaseDistributable`        |Runs an application image with bundled JDK & resources
-`run`                      | `runRelease`                     |Runs a non-packaged application `jar` using Gradle JDK
-`package<FORMAT_NAME>`     | `packageRelease<FORMAT_NAME>`    |Packages an application image into a `<FORMAT_NAME>` file
-`packageForCurrentOS`      | `packageReleaseForCurrentOS`     |Packages an application image into a format compatible with current OS
-`notarize<FORMAT_NAME>`    | `notarizeRelease<FORMAT_NAME>`   |Uploads a `<FORMAT_NAME>` application image for notarization (macOS only)
-`checkNotarizationStatus`  | `checkReleaseNotarizationStatus` |Checks if notarization succeeded (macOS only)
+ Default task (w/o ProGuard)       | Release task (w. ProGuard)               | Description
+-----------------------------------|------------------------------------------|--------------------------------------------------------------------------
+ `createDistributable`             | `createReleaseDistributable`             | Creates an application image with bundled JDK & resources
+ `runDistributable`                | `runReleaseDistributable`                | Runs an application image with bundled JDK & resources
+ `run`                             | `runRelease`                             | Runs a non-packaged application `jar` using Gradle JDK
+ `package<FORMAT_NAME>`            | `packageRelease<FORMAT_NAME>`            | Packages an application image into a `<FORMAT_NAME>` file
+ `packageDistributionForCurrentOS` | `packageReleaseDistributionForCurrentOS` | Packages an application image into a format compatible with current OS
+ `packageUberJarForCurrentOS`      | `packageReleaseUberJarForCurrentOS`      | Packages an application image into an uber (fat) JAR
+ `notarize<FORMAT_NAME>`           | `notarizeRelease<FORMAT_NAME>`           | Uploads a `<FORMAT_NAME>` application image for notarization (macOS only)
+ `checkNotarizationStatus`         | `checkReleaseNotarizationStatus`         | Checks if notarization succeeded (macOS only)
 
 The default configuration adds a few ProGuard rules:
 * an application image is minified, i.e. non-used classes are removed;
@@ -644,6 +647,18 @@ compose.desktop {
     application {
         buildTypes.release.proguard {
             optimize.set(false)
+        }
+    }
+}
+```
+
+Joining to the uber JAR is disabled by default - ProGuard produces the corresponding JAR for every input JAR.
+To enable it, set the following property via Gradle DSL:
+```
+compose.desktop {
+    application {
+        buildTypes.release.proguard {
+            joinOutputJars.set(true)
         }
     }
 }

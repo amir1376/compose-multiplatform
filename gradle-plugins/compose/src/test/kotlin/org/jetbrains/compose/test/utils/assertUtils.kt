@@ -57,6 +57,10 @@ internal class BuildResultChecks(private val result: BuildResult) {
         taskOutcome(task, TaskOutcome.FAILED)
     }
 
+    fun taskUpToDate(task: String) {
+        taskOutcome(task, TaskOutcome.UP_TO_DATE)
+    }
+
     fun taskFromCache(task: String) {
         taskOutcome(task, TaskOutcome.FROM_CACHE)
     }
@@ -66,6 +70,10 @@ internal class BuildResultChecks(private val result: BuildResult) {
         if (result.task(task)?.outcome != null) {
             taskOutcome(task, TaskOutcome.SKIPPED)
         }
+    }
+
+    fun taskNoSource(task: String) {
+        taskOutcome(task, TaskOutcome.NO_SOURCE)
     }
 
     private fun taskOutcome(task: String, expectedOutcome: TaskOutcome) {

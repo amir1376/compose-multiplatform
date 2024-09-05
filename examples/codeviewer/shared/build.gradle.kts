@@ -2,6 +2,7 @@
 
 plugins {
     kotlin("multiplatform")
+    kotlin("plugin.compose")
     id("com.android.library")
     id("org.jetbrains.compose")
 }
@@ -25,13 +26,17 @@ kotlin {
     }
 
     sourceSets {
+        all {
+            languageSettings {
+                optIn("org.jetbrains.compose.resources.ExperimentalResourceApi")
+            }
+        }
         val commonMain by getting {
             dependencies {
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material)
                 implementation(compose.materialIconsExtended)
-                 @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
                 implementation(compose.components.resources)
             }
         }
@@ -68,7 +73,6 @@ android {
     compileSdk = 34
     namespace = "org.jetbrains.codeviewer.common"
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-    sourceSets["main"].res.srcDirs("src/androidMain/res", "src/commonMain/resources")
     defaultConfig {
         minSdk = 26
     }

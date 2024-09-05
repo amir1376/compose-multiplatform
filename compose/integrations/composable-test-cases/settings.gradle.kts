@@ -7,10 +7,6 @@ pluginManagement {
         maven("https://maven.pkg.jetbrains.space/kotlin/p/kotlin/dev/")
         mavenLocal()
     }
-
-    plugins {
-        id("org.jetbrains.compose").version(extra["compose.version"] as String)
-    }
 }
 
 rootProject.name = "composable-test-cases"
@@ -122,6 +118,9 @@ if (casesToRun.isDefault()) {
 
     module(":testcase-expectActual-lib", "testcases/expectActual/lib")
     module(":testcase-expectActual-main", "testcases/expectActual/main")
+
+    module(":testcase-stability-lib", "testcases/stability/lib")
+    module(":testcase-stability-main", "testcases/stability/main")
 }
 
 /**

@@ -6,6 +6,7 @@
 package org.jetbrains.compose.experimental.internal
 
 import org.gradle.api.Project
+import org.jetbrains.compose.internal.utils.findLocalOrGlobalProperty
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 
@@ -27,7 +28,6 @@ private val TargetType.gradlePropertyName get() = "org.jetbrains.compose.experim
 private val EXPERIMENTAL_TARGETS: Set<TargetType> = setOf(
     TargetType("macos", presets = listOf("macosX64", "macosArm64")),
     TargetType("jscanvas", presets = listOf("jsIr", "js")),
-    TargetType("wasm", presets = listOf("wasm", "wasmJs")),
 )
 
 private sealed interface CheckResult {
@@ -75,7 +75,8 @@ private fun checkTarget(project: Project, target: KotlinTarget): CheckResult {
                 it.id.displayName.contains(SKIKO_ARTIFACT_PREFIX)
             }
             if (containsSkikoArtifact) {
-                if (project.findProperty(targetType.gradlePropertyName) != "true") {
+                val targetIsDisabled = project.findLocalOrGlobalProperty(targetType.gradlePropertyName).map { it != "true" }
+                if (targetIsDisabled.get()) {
                     return CheckResult.Fail(targetType)
                 }
             }

@@ -8,11 +8,90 @@ package org.jetbrains.compose
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 import org.jetbrains.compose.internal.ComposeCompilerArtifactProvider
+import org.jetbrains.compose.internal.KOTLIN_ANDROID_PLUGIN_ID
+import org.jetbrains.compose.internal.KOTLIN_JS_PLUGIN_ID
+import org.jetbrains.compose.internal.KOTLIN_JVM_PLUGIN_ID
+import org.jetbrains.compose.internal.KOTLIN_MPP_PLUGIN_ID
+import org.jetbrains.compose.internal.Version
+import org.jetbrains.compose.internal.ideaIsInSyncProvider
 import org.jetbrains.compose.internal.mppExtOrNull
-import org.jetbrains.compose.internal.service.ConfigurationProblemReporterService
 import org.jetbrains.compose.internal.webExt
-import org.jetbrains.kotlin.gradle.plugin.*
+import org.jetbrains.kotlin.gradle.dsl.KotlinJsCompile
+import org.jetbrains.kotlin.gradle.plugin.KotlinBasePlugin
+import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
+import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
+import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
+import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
+import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrTarget
+
+internal fun Project.configureComposeCompilerPlugin() {
+    //only one of them can be applied to the project
+    listOf(
+        KOTLIN_MPP_PLUGIN_ID,
+        KOTLIN_JVM_PLUGIN_ID,
+        KOTLIN_ANDROID_PLUGIN_ID,
+        KOTLIN_JS_PLUGIN_ID
+    ).forEach { pluginId ->
+        plugins.withId(pluginId) { plugin ->
+            configureComposeCompilerPlugin(plugin as KotlinBasePlugin)
+        }
+    }
+}
+
+internal const val newCompilerIsAvailableVersion = "2.0.0-RC2-238"
+internal const val newComposeCompilerKotlinSupportPluginId = "org.jetbrains.kotlin.plugin.compose"
+internal const val newComposeCompilerError =
+    "Since Kotlin 2.0.0-RC2 to use Compose Multiplatform " +
+            "you must apply \"$newComposeCompilerKotlinSupportPluginId\" plugin." +
+            "\nSee the migration guide https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compiler.html#migrating-a-compose-multiplatform-project"
+
+private fun Project.configureComposeCompilerPlugin(kgp: KotlinBasePlugin) {
+    val kgpVersion = kgp.pluginVersion
+
+    if (Version.fromString(kgpVersion) < Version.fromString(newCompilerIsAvailableVersion)) {
+        logger.info("Apply ComposeCompilerKotlinSupportPlugin (KGP version = $kgpVersion)")
+        project.plugins.apply(ComposeCompilerKotlinSupportPlugin::class.java)
+
+        //legacy logic applied for Kotlin < 2.0 only
+        project.afterEvaluate {
+            val composeExtension = project.extensions.getByType(ComposeExtension::class.java)
+            project.tasks.withType(org.jetbrains.kotlin.gradle.dsl.KotlinCompile::class.java).configureEach {
+                it.kotlinOptions.apply {
+                    freeCompilerArgs = freeCompilerArgs +
+                            composeExtension.kotlinCompilerPluginArgs.get().flatMap { arg ->
+                                listOf("-P", "plugin:androidx.compose.compiler.plugins.kotlin:$arg")
+                            }
+                }
+            }
+
+            val hasAnyWebTarget = project.mppExtOrNull?.targets?.firstOrNull {
+                it.platformType == KotlinPlatformType.js ||
+                        it.platformType == KotlinPlatformType.wasm
+            } != null
+            if (hasAnyWebTarget) {
+                // currently k/wasm compile task is covered by KotlinJsCompile type
+                project.tasks.withType(KotlinJsCompile::class.java).configureEach {
+                    it.kotlinOptions.freeCompilerArgs += listOf(
+                        "-Xklib-enable-signature-clash-checks=false",
+                    )
+                }
+            }
+        }
+    } else {
+        //There is no other way to check that the plugin WASN'T applied!
+        afterEvaluate {
+            logger.info("Check that new '$newComposeCompilerKotlinSupportPluginId' was applied")
+            if (!project.plugins.hasPlugin(newComposeCompilerKotlinSupportPluginId)) {
+                val ideaIsInSync = project.ideaIsInSyncProvider().get()
+                if (ideaIsInSync) logger.error("e: Configuration problem: $newComposeCompilerError")
+                else error("e: Configuration problem: $newComposeCompilerError")
+            }
+        }
+    }
+}
 
 class ComposeCompilerKotlinSupportPlugin : KotlinCompilerPluginSupportPlugin {
     private lateinit var composeCompilerArtifactProvider: ComposeCompilerArtifactProvider
@@ -25,36 +104,12 @@ class ComposeCompilerKotlinSupportPlugin : KotlinCompilerPluginSupportPlugin {
             val composeExt = target.extensions.getByType(ComposeExtension::class.java)
 
             composeCompilerArtifactProvider = ComposeCompilerArtifactProvider {
-                composeExt.kotlinCompilerPlugin.orNull ?:
-                    ComposeCompilerCompatibility.compilerVersionFor(target.getKotlinPluginVersion())
+                composeExt.kotlinCompilerPlugin.orNull
+                    ?: ComposeCompilerCompatibility.compilerVersionFor(target.getKotlinPluginVersion())
             }
 
             applicableForPlatformTypes = composeExt.platformTypes
-
-            collectUnsupportedCompilerPluginUsages(target)
         }
-    }
-
-    private fun collectUnsupportedCompilerPluginUsages(project: Project) {
-        fun Project.hasNonJvmTargets(): Boolean {
-            val nonJvmTargets = setOf(KotlinPlatformType.native, KotlinPlatformType.js, KotlinPlatformType.wasm)
-            return mppExtOrNull?.targets?.any {
-                it.platformType in nonJvmTargets
-            } ?: false
-        }
-
-        fun SubpluginArtifact.isNonJBComposeCompiler(): Boolean {
-            return !groupId.startsWith("org.jetbrains.compose.compiler")
-        }
-
-        ConfigurationProblemReporterService.registerUnsupportedPluginProvider(
-            project,
-            project.provider {
-                composeCompilerArtifactProvider.compilerArtifact.takeIf {
-                    project.hasNonJvmTargets() && it.isNonJBComposeCompiler()
-                }
-            }
-        )
     }
 
     override fun getCompilerPluginId(): String =
@@ -98,15 +153,4 @@ class ComposeCompilerKotlinSupportPlugin : KotlinCompilerPluginSupportPlugin {
 
     private fun options(vararg options: Pair<String, String>): List<SubpluginOption> =
         options.map { SubpluginOption(it.first, it.second) }
-}
-
-private const val COMPOSE_COMPILER_COMPATIBILITY_LINK =
-    "https://github.com/JetBrains/compose-jb/blob/master/VERSIONING.md#using-compose-multiplatform-compiler"
-
-internal fun createWarningAboutNonCompatibleCompiler(currentCompilerPluginGroupId: String): String {
-    return """
-WARNING: Usage of the Custom Compose Compiler plugin ('$currentCompilerPluginGroupId') 
-with non-JVM targets (Kotlin/Native, Kotlin/JS, Kotlin/WASM) is not supported.
-For more information, please visit: $COMPOSE_COMPILER_COMPATIBILITY_LINK
-""".trimMargin()
 }

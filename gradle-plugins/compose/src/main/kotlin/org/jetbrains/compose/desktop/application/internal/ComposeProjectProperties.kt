@@ -5,10 +5,13 @@
 
 package org.jetbrains.compose.desktop.application.internal
 
+import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
-import org.jetbrains.compose.internal.utils.valueOrNull
+import org.jetbrains.compose.internal.utils.findLocalOrGlobalProperty
 import org.jetbrains.compose.internal.utils.toBooleanProvider
+import org.jetbrains.compose.internal.utils.valueOrNull
+import org.jetbrains.kotlin.gradle.plugin.extraProperties
 
 internal object ComposeProperties {
     internal const val VERBOSE = "compose.desktop.verbose"
@@ -21,7 +24,7 @@ internal object ComposeProperties {
     internal const val MAC_NOTARIZATION_PASSWORD = "compose.desktop.mac.notarization.password"
     internal const val MAC_NOTARIZATION_TEAM_ID_PROVIDER = "compose.desktop.mac.notarization.teamID"
     internal const val CHECK_JDK_VENDOR = "compose.desktop.packaging.checkJdkVendor"
-    internal const val ALWAYS_GENERATE_RESOURCE_ACCESSORS = "compose.resources.always.generate.accessors"
+    internal const val DISABLE_MULTIMODULE_RESOURCES = "org.jetbrains.compose.resources.multimodule.disable"
     internal const val SYNC_RESOURCES_PROPERTY = "compose.ios.resources.sync"
 
     fun isVerbose(providers: ProviderFactory): Provider<Boolean> =
@@ -54,9 +57,10 @@ internal object ComposeProperties {
     fun checkJdkVendor(providers: ProviderFactory): Provider<Boolean> =
         providers.valueOrNull(CHECK_JDK_VENDOR).toBooleanProvider(true)
 
-    fun alwaysGenerateResourceAccessors(providers: ProviderFactory): Provider<Boolean> =
-        providers.valueOrNull(ALWAYS_GENERATE_RESOURCE_ACCESSORS).toBooleanProvider(false)
+    fun disableMultimoduleResources(providers: ProviderFactory): Provider<Boolean> =
+        providers.valueOrNull(DISABLE_MULTIMODULE_RESOURCES).toBooleanProvider(false)
 
-    fun syncResources(providers: ProviderFactory): Provider<Boolean> =
-        providers.valueOrNull(SYNC_RESOURCES_PROPERTY).toBooleanProvider(true)
+    //providers.valueOrNull works only with root gradle.properties
+    fun dontSyncResources(project: Project): Provider<Boolean> =
+        project.findLocalOrGlobalProperty(SYNC_RESOURCES_PROPERTY).map { it == "false" }
 }

@@ -1,21 +1,23 @@
 import androidx.compose.ui.graphics.Color
+import kotlinx.datetime.Clock
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import kotlin.random.Random
 import kotlin.random.nextInt
 
-data class Message private constructor(
+data class Message(
     val user: User,
-    val timeMs: Long,
     val text: String,
+    val seconds: Long,
     val id: Long
 ) {
     constructor(
         user: User,
-        timeMs: Long,
         text: String
     ) : this(
         user = user,
-        timeMs = timeMs,
         text = text,
+        seconds = Clock.System.now().epochSeconds,
         id = Random.nextLong()
     )
 }
@@ -23,7 +25,7 @@ data class Message private constructor(
 data class User(
     val name: String,
     val color: Color = ColorProvider.getColor(),
-    val picture: String?
+    val picture: DrawableResource?
 )
 
 object ColorProvider {

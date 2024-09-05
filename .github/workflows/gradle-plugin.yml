@@ -4,13 +4,21 @@ on:
     paths:
       - 'gradle-plugins/**'
       - '.github/workflows/gradle-plugin.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'gradle-plugins/**'
+      - '.github/workflows/gradle-plugin.yml'
+
 jobs:
   test-gradle-plugin:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, macos-12, windows-2022]
-        gradle: [7.4, 8.3]
+        os: [ubuntu-20.04, macos-14, windows-2022]
+        gradle: [7.4, 8.8]
+        agp: [8.1.0, 8.5.0]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -23,7 +31,13 @@ jobs:
         run: |
           cd gradle-plugins
           ./gradlew assemble
-          ./gradlew --continue :preview-rpc:test :compose:test :compose:testGradle-${{ matrix.gradle }}
+          ./gradlew --continue :preview-rpc:test :compose:test ':compose:test-Gradle(${{ matrix.gradle }})-Agp(${{ matrix.agp }})'
+      - name: Upload Reports
+        uses: actions/upload-artifact@v2
+        with:
+          name: Test-Reports
+          path: gradle-plugins/compose/build/reports
+        if: always()
       - name: Print summary
         shell: bash
         if: always()

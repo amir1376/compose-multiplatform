@@ -1,4 +1,5 @@
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import kotlinx.validation.ExperimentalBCVApi
+import org.jetbrains.compose.ExperimentalComposeLibrary
 import org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalWasmDsl
 
 plugins {
@@ -6,13 +7,10 @@ plugins {
     id("org.jetbrains.compose")
     id("maven-publish")
     id("com.android.library")
+    id("org.jetbrains.kotlinx.binary-compatibility-validator")
 }
 
-val composeVersion = extra["compose.version"] as String
-
 kotlin {
-    @OptIn(ExperimentalKotlinGradlePluginApi::class)
-    targetHierarchy.default()
     jvm("desktop")
     androidTarget {
         publishLibraryVariants("release")
@@ -47,12 +45,15 @@ kotlin {
     macosX64()
     macosArm64()
 
+    applyDefaultHierarchyTemplate()
     sourceSets {
         all {
             languageSettings {
                 optIn("kotlin.RequiresOptIn")
                 optIn("kotlinx.cinterop.ExperimentalForeignApi")
                 optIn("kotlin.experimental.ExperimentalNativeApi")
+                optIn("org.jetbrains.compose.resources.InternalResourceApi")
+                optIn("org.jetbrains.compose.resources.ExperimentalResourceApi")
             }
         }
 
@@ -74,8 +75,11 @@ kotlin {
         }
         val commonTest by getting {
             dependencies {
-                implementation(libs.kotlinx.coroutines.test)
                 implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+                implementation(compose.material3)
+                @OptIn(ExperimentalComposeLibrary::class)
+                implementation(compose.uiTest)
             }
         }
         val blockingMain by creating {
@@ -92,9 +96,6 @@ kotlin {
         }
         val jvmAndAndroidMain by creating {
             dependsOn(blockingMain)
-            dependencies {
-                implementation(compose.material3)
-            }
         }
         val jvmAndAndroidTest by creating {
             dependsOn(blockingTest)
@@ -108,20 +109,22 @@ kotlin {
             dependsOn(jvmAndAndroidTest)
             dependencies {
                 implementation(compose.desktop.currentOs)
-                implementation(compose.desktop.uiTestJUnit4)
-                implementation(libs.kotlinx.coroutines.swing)
             }
         }
         val androidMain by getting {
             dependsOn(jvmAndAndroidMain)
+            dependencies {
+                //it will be called only in android instrumented tests where the library should be available
+                compileOnly(libs.androidx.test.monitor)
+            }
         }
         val androidInstrumentedTest by getting {
             dependsOn(jvmAndAndroidTest)
             dependencies {
-                implementation("androidx.test:core:1.5.0")
-                implementation("androidx.compose.ui:ui-test-manifest:1.5.4")
-                implementation("androidx.compose.ui:ui-test:1.5.4")
-                implementation("androidx.compose.ui:ui-test-junit4:1.5.4")
+                implementation(libs.androidx.test.core)
+                implementation(libs.androidx.compose.ui.test)
+                implementation(libs.androidx.compose.ui.test.manifest)
+                implementation(libs.androidx.compose.ui.test.junit4)
             }
         }
         val androidUnitTest by getting {
@@ -186,6 +189,7 @@ android {
             assets.srcDir("src/androidInstrumentedTest/assets")
         }
         named("test") { resources.srcDir(commonTestResources) }
+        named("main") { manifest.srcFile("src/androidMain/AndroidManifest.xml") }
     }
 }
 
@@ -195,9 +199,18 @@ configureMavenPublication(
     name = "Resources for Compose JB"
 )
 
-// adding it here to make sure skiko is unpacked and available in web tests
-compose.experimental {
-    web.application {}
+apiValidation {
+    @OptIn(ExperimentalBCVApi::class)
+    klib { enabled = true }
+    nonPublicMarkers.add("org.jetbrains.compose.resources.InternalResourceApi")
+}
+
+//utility task to generate CLDRPluralRuleLists.kt file by 'CLDRPluralRules/plurals.xml'
+tasks.register<GeneratePluralRuleListsTask>("generatePluralRuleLists") {
+    val projectDir = project.layout.projectDirectory
+    pluralsFile = projectDir.file("CLDRPluralRules/plurals.xml")
+    outputFile = projectDir.file("src/commonMain/kotlin/org/jetbrains/compose/resources/plural/CLDRPluralRuleLists.kt")
+    samplesOutputFile = projectDir.file("src/commonTest/kotlin/org/jetbrains/compose/resources/CLDRPluralRuleLists.test.kt")
 }
 
 afterEvaluate {

@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalWasmDsl
 
 plugins {
@@ -8,8 +7,6 @@ plugins {
 }
 
 kotlin {
-    @OptIn(ExperimentalKotlinGradlePluginApi::class)
-    targetHierarchy.default()
     androidTarget {
         compilations.all {
             kotlinOptions {
@@ -42,34 +39,30 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        macosX64(),
-        macosArm64()
-    ).forEach { macosTarget ->
-        macosTarget.binaries {
-            executable {
-                entryPoint = "main"
-            }
-        }
-    }
-
+    applyDefaultHierarchyTemplate()
     sourceSets {
-        all {
-            languageSettings {
-                optIn("org.jetbrains.compose.resources.ExperimentalResourceApi")
-            }
+        val desktopMain by getting
+        val wasmJsMain by getting
+
+        commonMain.dependencies {
+            implementation(compose.runtime)
+            implementation(compose.material3)
+            implementation(project(":resources:library"))
         }
-        val commonMain by getting {
-            dependencies {
-                implementation(compose.runtime)
-                implementation(compose.material3)
-                implementation(project(":resources:library"))
-            }
+        desktopMain.dependencies {
+            implementation(compose.desktop.common)
         }
-        val desktopMain by getting {
-            dependencies {
-                implementation(compose.desktop.common)
-            }
+        androidMain.dependencies {
+            implementation(libs.androidx.ui.tooling)
+            implementation(libs.androidx.ui.tooling.preview)
+        }
+
+        val nonAndroidMain by creating {
+            dependsOn(commonMain.get())
+            wasmJsMain.dependsOn(this)
+            desktopMain.dependsOn(this)
+            nativeMain.get().dependsOn(this)
+            jsMain.get().dependsOn(this)
         }
     }
 }
@@ -84,13 +77,19 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.11"
+    }
 }
 
 compose.experimental {
     web.application {}
 }
 
-// TODO: remove this block after we update on a newer kotlin. Currently there is an error: `error:0308010C:digital envelope routines::unsupported`
-rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin> {
-    rootProject.the<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension>().nodeVersion = "16.0.0"
+//because the dependency on the compose library is a project dependency
+compose.resources {
+    generateResClass = always
 }
